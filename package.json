@@ -31,12 +31,14 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "patch-package": "^8.0.1",
     "typescript": "~6.0.3"
   },
   "scripts": {
     "start": "expo start --dev-client",
     "android": "expo run:android",
-    "prebuild": "expo prebuild --platform android --clean"
+    "prebuild": "expo prebuild --platform android --clean",
+    "postinstall": "patch-package"
   },
   "private": true
 }
