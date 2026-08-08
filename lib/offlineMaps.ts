@@ -1,6 +1,6 @@
 import { OfflineManager, type LngLatBounds } from '@maplibre/maplibre-react-native'
-import { MAPTILER_STYLE_URL } from './tiles'
-import { atualizarStatusAreaOffline } from './db'
+import { MAPTILER_STYLE_URL, SEAMARK_STYLE_URL, DHN_STYLE_URL } from './tiles'
+import { atualizarStatusAreaOffline, atualizarPackCamada, type CamadaOffline } from './db'
 
 export interface BBox {
   minLat: number
@@ -32,58 +32,77 @@ export function estimarTamanhoBytes(bbox: BBox, zoomMin: number, zoomMax: number
   return estimarTiles(bbox, zoomMin, zoomMax) * BYTES_POR_TILE_ESTIMADO
 }
 
-// Baixa só a camada base (MapTiler) para uso offline. O OfflineManager desta versão
-// da lib só aceita UMA styleURL por pacote (não um StyleSpecification combinado) —
-// por isso o overlay de marcas náuticas (OpenSeaMap) continua exigindo internet
-// mesmo com a área baixada. Ver nota no plano/registro de decisões.
+// URL de style por camada — cada uma vira seu próprio OfflinePack, já que o
+// OfflineManager desta versão da lib só aceita UMA styleURL por pacote (não um
+// StyleSpecification combinado). O cache de tiles do MapLibre é compartilhado por
+// URL, então isso também é o que permite o mapa ao vivo reaproveitar o que já foi
+// baixado offline.
+const STYLE_URL_POR_CAMADA: Record<CamadaOffline, string> = {
+  base: MAPTILER_STYLE_URL,
+  seamark: SEAMARK_STYLE_URL,
+  dhnRnc: DHN_STYLE_URL,
+}
+
+// Baixa cada camada pedida como um OfflinePack separado. As camadas são iniciadas em
+// sequência (o await só espera o registro do pack, não o download completo — o
+// download roda em paralelo pelo OfflineManager nativo, cada um reportando progresso
+// pelo próprio listener) e o status da área só vira "completo" quando todas as
+// camadas pedidas tiverem terminado (ver atualizarPackCamada em lib/db.ts).
 export async function baixarAreaOffline(
   areaId: number,
   nomePack: string,
   bbox: BBox,
   zoomMin: number,
   zoomMax: number,
+  camadas: CamadaOffline[],
   onProgress?: (percentual: number) => void
 ): Promise<void> {
-  if (!MAPTILER_STYLE_URL) {
-    atualizarStatusAreaOffline(areaId, 'erro', nomePack)
-    throw new Error('MAPTILER_KEY não configurada — não é possível baixar área offline.')
-  }
-
+  const bounds: LngLatBounds = [bbox.minLon, bbox.minLat, bbox.maxLon, bbox.maxLat]
   atualizarStatusAreaOffline(areaId, 'baixando')
 
-  const bounds: LngLatBounds = [bbox.minLon, bbox.minLat, bbox.maxLon, bbox.maxLat]
+  const progressoPorCamada: Partial<Record<CamadaOffline, number>> = {}
+  function reportarProgresso() {
+    const valores = Object.values(progressoPorCamada)
+    if (valores.length === 0) return
+    const media = valores.reduce((a, b) => a + b, 0) / camadas.length
+    onProgress?.(media)
+  }
 
-  try {
-    const pack = await OfflineManager.createPack(
-      {
-        mapStyle: MAPTILER_STYLE_URL,
-        bounds,
-        minZoom: zoomMin,
-        maxZoom: zoomMax,
-        metadata: { areaId, nomePack },
-      },
-      (_pack, status) => {
-        onProgress?.(status.percentage)
-        if (status.state === 'complete') {
-          atualizarStatusAreaOffline(areaId, 'completo', pack.id, status.completedResourceSize)
+  for (const camada of camadas) {
+    const styleUrl = STYLE_URL_POR_CAMADA[camada]
+    if (!styleUrl) {
+      console.warn(`Camada "${camada}" sem style URL configurada — pulando.`)
+      continue
+    }
+    try {
+      await OfflineManager.createPack(
+        { mapStyle: styleUrl, bounds, minZoom: zoomMin, maxZoom: zoomMax, metadata: { areaId, nomePack, camada } },
+        (pack, status) => {
+          progressoPorCamada[camada] = status.percentage
+          reportarProgresso()
+          if (status.state === 'complete') {
+            atualizarPackCamada(areaId, camada, pack.id, status.completedResourceSize)
+          }
+        },
+        (_pack, err) => {
+          atualizarStatusAreaOffline(areaId, 'erro')
+          console.warn('Falha ao baixar camada offline', camada, nomePack, err)
         }
-      },
-      (_pack, err) => {
-        atualizarStatusAreaOffline(areaId, 'erro', pack.id)
-        console.warn('Falha ao baixar área offline', nomePack, err)
-      }
-    )
-    atualizarStatusAreaOffline(areaId, 'baixando', pack.id)
-  } catch (err) {
-    atualizarStatusAreaOffline(areaId, 'erro', nomePack)
-    console.warn('Falha ao criar pacote offline', nomePack, err)
+      )
+    } catch (err) {
+      atualizarStatusAreaOffline(areaId, 'erro')
+      console.warn('Falha ao criar pacote offline', camada, nomePack, err)
+    }
   }
 }
 
-export async function removerAreaOffline(packId: string): Promise<void> {
-  try {
-    await OfflineManager.deletePack(packId)
-  } catch (err) {
-    console.warn('Falha ao remover pacote offline', packId, err)
+export async function removerAreaOffline(packIds: Partial<Record<CamadaOffline, string>>): Promise<void> {
+  for (const packId of Object.values(packIds)) {
+    if (!packId) continue
+    try {
+      await OfflineManager.deletePack(packId)
+    } catch (err) {
+      console.warn('Falha ao remover pacote offline', packId, err)
+    }
   }
 }

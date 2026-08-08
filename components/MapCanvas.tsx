@@ -4,7 +4,7 @@ import {
   Map, Camera, UserLocation, Marker, RasterSource, GeoJSONSource, Layer,
   type MapRef, type LngLatBounds,
 } from '@maplibre/maplibre-react-native'
-import { MAPTILER_STYLE_URL, SEAMARK_TILE_URL, BATHYMETRY_TILE_URL, SEAMARK_MAX_ZOOM, CamadasConfig } from '../lib/tiles'
+import { MAPTILER_STYLE_URL, SEAMARK_TILE_URL, BATHYMETRY_TILE_URL, SEAMARK_MAX_ZOOM, DHN_TILE_URL, DHN_MAX_ZOOM, CamadasConfig } from '../lib/tiles'
 import { COLORS } from '../constants/theme'
 import type { Waypoint, RoutePoint, MobEvent } from '../lib/db'
 
@@ -81,6 +81,12 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function MapCanvas
       />
 
       <UserLocation animated accuracy heading />
+
+      {camadas.dhnRnc && DHN_TILE_URL && (
+        <RasterSource id="dhn-rnc" tiles={[DHN_TILE_URL]} tileSize={256} maxzoom={DHN_MAX_ZOOM} attribution="DHN — uso pessoal de teste">
+          <Layer id="dhn-rnc-layer" type="raster" paint={{ 'raster-opacity': 1 }} />
+        </RasterSource>
+      )}
 
       {camadas.seamarks && (
         <RasterSource id="seamark" tiles={[SEAMARK_TILE_URL]} tileSize={256} maxzoom={SEAMARK_MAX_ZOOM} attribution="© OpenSeaMap contributors">

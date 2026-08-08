@@ -304,7 +304,12 @@ export function removerMOB(id: number): void {
 
 // ── Áreas offline ────────────────────────────────────────────────────────────
 
-export type CamadasOffline = 'base' | 'base+seamark' | 'base+seamark+batimetria'
+// Uma área pode combinar várias camadas — cada uma vira seu próprio OfflinePack no
+// MapLibre (a lib só aceita 1 style URL por pack). "camadas" guarda a lista pedida
+// (ex: "base,seamark,dhnRnc"); "maplibre_pack_id" guarda um JSON { camada: packId }
+// com o que já foi baixado — só fica "completo" quando todas as camadas pedidas
+// tiverem pack id registrado.
+export type CamadaOffline = 'base' | 'seamark' | 'dhnRnc'
 export type StatusOffline = 'pendente' | 'baixando' | 'completo' | 'erro'
 
 export interface OfflineArea {
@@ -316,7 +321,7 @@ export interface OfflineArea {
   max_lon: number
   zoom_min: number
   zoom_max: number
-  camadas: CamadasOffline
+  camadas: string
   maplibre_pack_id: string | null
   status: StatusOffline
   tamanho_bytes: number | null
@@ -326,22 +331,46 @@ export interface OfflineArea {
 
 export function criarAreaOffline(area: {
   nome: string; minLat: number; maxLat: number; minLon: number; maxLon: number;
-  zoomMin: number; zoomMax: number; camadas: CamadasOffline;
+  zoomMin: number; zoomMax: number; camadas: CamadaOffline[];
 }): number {
   const now = Date.now()
   const r = db.runSync(
     `INSERT INTO offline_areas
       (nome, min_lat, max_lat, min_lon, max_lon, zoom_min, zoom_max, camadas, status, criado_em, atualizado_em)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pendente', ?, ?)`,
-    [area.nome, area.minLat, area.maxLat, area.minLon, area.maxLon, area.zoomMin, area.zoomMax, area.camadas, now, now]
+    [area.nome, area.minLat, area.maxLat, area.minLon, area.maxLon, area.zoomMin, area.zoomMax, area.camadas.join(','), now, now]
   )
   return r.lastInsertRowId
 }
 
-export function atualizarStatusAreaOffline(id: number, status: StatusOffline, packId?: string | null, tamanhoBytes?: number | null): void {
+export function getCamadasArea(area: OfflineArea): CamadaOffline[] {
+  return area.camadas.split(',').filter(Boolean) as CamadaOffline[]
+}
+
+export function getPackIds(area: OfflineArea): Partial<Record<CamadaOffline, string>> {
+  if (!area.maplibre_pack_id) return {}
+  try {
+    return JSON.parse(area.maplibre_pack_id)
+  } catch {
+    return {}
+  }
+}
+
+export function atualizarStatusAreaOffline(id: number, status: StatusOffline): void {
+  db.runSync('UPDATE offline_areas SET status = ?, atualizado_em = ? WHERE id = ?', [status, Date.now(), id])
+}
+
+// Registra o pack id de UMA camada concluída, soma o tamanho ao total acumulado e
+// marca a área como "completo" só quando todas as camadas pedidas já tiverem pack id.
+export function atualizarPackCamada(id: number, camada: CamadaOffline, packId: string, tamanhoBytes?: number | null): void {
+  const area = db.getFirstSync<OfflineArea>('SELECT * FROM offline_areas WHERE id = ?', [id])
+  if (!area) return
+  const packIds = getPackIds(area)
+  packIds[camada] = packId
+  const completo = getCamadasArea(area).every(c => packIds[c])
   db.runSync(
-    'UPDATE offline_areas SET status = ?, maplibre_pack_id = COALESCE(?, maplibre_pack_id), tamanho_bytes = COALESCE(?, tamanho_bytes), atualizado_em = ? WHERE id = ?',
-    [status, packId ?? null, tamanhoBytes ?? null, Date.now(), id]
+    'UPDATE offline_areas SET maplibre_pack_id = ?, status = ?, tamanho_bytes = COALESCE(tamanho_bytes, 0) + ?, atualizado_em = ? WHERE id = ?',
+    [JSON.stringify(packIds), completo ? 'completo' : 'baixando', tamanhoBytes ?? 0, Date.now(), id]
   )
 }
 

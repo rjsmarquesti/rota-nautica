@@ -114,7 +114,7 @@ export default function MapaScreen() {
   return (
     <View style={s.container}>
       <MapCanvas
-        camadas={{ seamarks: true, bathymetry: false }}
+        camadas={{ seamarks: true, bathymetry: false, dhnRnc: true }}
         centro={centro}
         seguirPosicao={seguir}
         waypoints={waypoints}

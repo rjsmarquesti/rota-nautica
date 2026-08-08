@@ -1,0 +1,20 @@
+{
+  "version": 8,
+  "name": "seamark-only",
+  "sources": {
+    "seamark": {
+      "type": "raster",
+      "tiles": ["https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png"],
+      "tileSize": 256,
+      "maxzoom": 15,
+      "attribution": "© OpenSeaMap contributors"
+    }
+  },
+  "layers": [
+    {
+      "id": "seamark-layer",
+      "type": "raster",
+      "source": "seamark"
+    }
+  ]
+}

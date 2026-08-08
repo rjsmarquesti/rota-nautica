@@ -7,17 +7,23 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { COLORS, FONTS, RADIUS } from '../../constants/theme'
 import MapCanvas, { MapCanvasHandle } from '../../components/MapCanvas'
-import { OFFLINE_ZOOM_DEFAULT, MAPTILER_KEY } from '../../lib/tiles'
+import { OFFLINE_ZOOM_DEFAULT, MAPTILER_KEY, DHN_TILE_URL } from '../../lib/tiles'
 import { estimarTiles, estimarTamanhoBytes, baixarAreaOffline, removerAreaOffline, BBox } from '../../lib/offlineMaps'
 import {
-  getAreasOffline, criarAreaOffline, deletarAreaOffline,
-  OfflineArea,
+  getAreasOffline, criarAreaOffline, deletarAreaOffline, getPackIds, getCamadasArea,
+  OfflineArea, CamadaOffline,
 } from '../../lib/db'
 
 function formatarBytes(bytes: number | null): string {
   if (!bytes) return '--'
   const mb = bytes / (1024 * 1024)
   return mb >= 1000 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(0)} MB`
+}
+
+const CAMADA_LABEL: Record<CamadaOffline, string> = {
+  base: 'Mapa base',
+  seamark: 'Marcas náuticas',
+  dhnRnc: 'Carta DHN',
 }
 
 const STATUS_INFO: Record<string, { label: string; cor: string }> = {
@@ -34,6 +40,8 @@ export default function OfflineScreen() {
   const [modalNovo, setModalNovo] = useState(false)
   const [bboxSelecionado, setBboxSelecionado] = useState<BBox | null>(null)
   const [nome, setNome] = useState('')
+  const [incluirSeamark, setIncluirSeamark] = useState(true)
+  const [incluirDhn, setIncluirDhn] = useState(!!DHN_TILE_URL)
 
   function recarregar() { setAreas(getAreasOffline()) }
   useFocusEffect(useCallback(() => { recarregar() }, []))
@@ -61,14 +69,19 @@ export default function OfflineScreen() {
       )
       return
     }
+    const camadas: CamadaOffline[] = [
+      'base',
+      ...(incluirSeamark ? (['seamark'] as CamadaOffline[]) : []),
+      ...(incluirDhn && DHN_TILE_URL ? (['dhnRnc'] as CamadaOffline[]) : []),
+    ]
     const { min, max } = OFFLINE_ZOOM_DEFAULT
     const id = criarAreaOffline({
       nome: nome.trim(),
       minLat: bboxSelecionado.minLat, maxLat: bboxSelecionado.maxLat,
       minLon: bboxSelecionado.minLon, maxLon: bboxSelecionado.maxLon,
-      zoomMin: min, zoomMax: max, camadas: 'base',
+      zoomMin: min, zoomMax: max, camadas,
     })
-    baixarAreaOffline(id, `area_${id}`, bboxSelecionado, min, max, () => recarregar())
+    baixarAreaOffline(id, `area_${id}`, bboxSelecionado, min, max, camadas, () => recarregar())
     setModalNovo(false)
     setNome('')
     setBboxSelecionado(null)
@@ -81,7 +94,7 @@ export default function OfflineScreen() {
       {
         text: 'Excluir', style: 'destructive',
         onPress: async () => {
-          if (area.maplibre_pack_id) await removerAreaOffline(area.maplibre_pack_id)
+          await removerAreaOffline(getPackIds(area))
           deletarAreaOffline(area.id)
           recarregar()
         },
@@ -89,8 +102,13 @@ export default function OfflineScreen() {
     ])
   }
 
-  const estimativaTiles = bboxSelecionado ? estimarTiles(bboxSelecionado, OFFLINE_ZOOM_DEFAULT.min, OFFLINE_ZOOM_DEFAULT.max) : 0
-  const estimativaBytes = bboxSelecionado ? estimarTamanhoBytes(bboxSelecionado, OFFLINE_ZOOM_DEFAULT.min, OFFLINE_ZOOM_DEFAULT.max) : 0
+  const camadasSelecionadas = 1 + (incluirSeamark ? 1 : 0) + (incluirDhn && DHN_TILE_URL ? 1 : 0)
+  const estimativaTiles = bboxSelecionado
+    ? estimarTiles(bboxSelecionado, OFFLINE_ZOOM_DEFAULT.min, OFFLINE_ZOOM_DEFAULT.max) * camadasSelecionadas
+    : 0
+  const estimativaBytes = bboxSelecionado
+    ? estimarTamanhoBytes(bboxSelecionado, OFFLINE_ZOOM_DEFAULT.min, OFFLINE_ZOOM_DEFAULT.max) * camadasSelecionadas
+    : 0
 
   return (
     <View style={[s.container, { paddingTop: insets.top + 12 }]}>
@@ -98,13 +116,13 @@ export default function OfflineScreen() {
       <Text style={s.subtitle}>Baixe uma região para navegar sem internet</Text>
 
       <View style={s.mapBox}>
-        <MapCanvas ref={mapRef} camadas={{ seamarks: true, bathymetry: false }} centro={[-43.2, -22.9]} zoom={9} />
+        <MapCanvas ref={mapRef} camadas={{ seamarks: true, bathymetry: false, dhnRnc: true }} centro={[-43.2, -22.9]} zoom={9} />
         <TouchableOpacity style={s.capturarBtn} onPress={capturarAreaVisivel} accessibilityRole="button" accessibilityLabel="Baixar área visível no mapa">
           <Ionicons name="cloud-download" size={16} color="#fff" />
           <Text style={s.capturarTxt}>Baixar área visível</Text>
         </TouchableOpacity>
       </View>
-      <Text style={s.aviso}>Fica disponível offline apenas o mapa base. O overlay de marcas náuticas exige internet.</Text>
+      <Text style={s.aviso}>Escolha abaixo quais camadas incluir no pacote offline dessa área.</Text>
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 40 }}>
         {areas.length === 0 ? (
@@ -115,11 +133,12 @@ export default function OfflineScreen() {
           </View>
         ) : areas.map(a => {
           const info = STATUS_INFO[a.status]
+          const rotuloCamadas = getCamadasArea(a).map(c => CAMADA_LABEL[c]).join(' + ')
           return (
             <View key={a.id} style={s.card}>
               <View style={{ flex: 1 }}>
                 <Text style={s.cardNome}>{a.nome}</Text>
-                <Text style={s.cardSub}>{formatarBytes(a.tamanho_bytes)}</Text>
+                <Text style={s.cardSub}>{rotuloCamadas} · {formatarBytes(a.tamanho_bytes)}</Text>
                 <Text style={[s.cardStatus, { color: info.cor }]}>{info.label}</Text>
               </View>
               <TouchableOpacity onPress={() => confirmarExcluir(a)} style={s.trashBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -141,6 +160,36 @@ export default function OfflineScreen() {
               placeholder="Nome da área (ex: Baía de Guanabara)"
               placeholderTextColor={COLORS.textLight}
             />
+
+            <View style={s.camadaRow}>
+              <Text style={s.camadaLabel}>Mapa base</Text>
+              <Text style={s.camadaObrigatoria}>Sempre incluído</Text>
+            </View>
+
+            <TouchableOpacity
+              style={s.camadaRow}
+              onPress={() => setIncluirSeamark(v => !v)}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: incluirSeamark }}
+              accessibilityLabel="Incluir marcas náuticas no pacote offline"
+            >
+              <Text style={s.camadaLabel}>Marcas náuticas (OpenSeaMap)</Text>
+              <Ionicons name={incluirSeamark ? 'checkbox' : 'square-outline'} size={22} color={incluirSeamark ? COLORS.primary : COLORS.textLight} />
+            </TouchableOpacity>
+
+            {DHN_TILE_URL && (
+              <TouchableOpacity
+                style={s.camadaRow}
+                onPress={() => setIncluirDhn(v => !v)}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: incluirDhn }}
+                accessibilityLabel="Incluir carta DHN no pacote offline"
+              >
+                <Text style={s.camadaLabel}>Carta DHN (teste pessoal)</Text>
+                <Ionicons name={incluirDhn ? 'checkbox' : 'square-outline'} size={22} color={incluirDhn ? COLORS.primary : COLORS.textLight} />
+              </TouchableOpacity>
+            )}
+
             <Text style={s.estimativa}>
               Estimativa: ~{estimativaTiles.toLocaleString('pt-BR')} tiles · {formatarBytes(estimativaBytes)}
             </Text>
@@ -187,6 +236,12 @@ const s = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 12, fontSize: FONTS.base,
     color: COLORS.text, backgroundColor: COLORS.bg,
   },
+  camadaRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 10, minHeight: 44,
+  },
+  camadaLabel: { fontSize: FONTS.base, color: COLORS.text },
+  camadaObrigatoria: { fontSize: FONTS.xs, color: COLORS.textLight },
   estimativa: { fontSize: FONTS.xs, color: COLORS.textLight },
   modalBtnRow: { flexDirection: 'row', gap: 10, marginTop: 8 },
   modalBtnCancelar: { flex: 1, paddingVertical: 14, alignItems: 'center', borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border },

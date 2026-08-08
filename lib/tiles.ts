@@ -24,7 +24,23 @@ export const BATHYMETRY_TILE_URL = ''
 export const SEAMARK_MAX_ZOOM = 15
 export const OFFLINE_ZOOM_DEFAULT = { min: 8, max: 14 }
 
+// Host do serviço pessoal de tiles (carta RNC da DHN, uso de teste — nunca em build de
+// produção). Configurar via EXPO_PUBLIC_DHN_TILES_HOST no .env.local (não versionado).
+// Vazio = camada desativada, mesmo padrão do BATHYMETRY_TILE_URL acima.
+export const DHN_TILES_HOST: string =
+  process.env.EXPO_PUBLIC_DHN_TILES_HOST ??
+  (Constants.expoConfig?.extra?.dhnTilesHost as string | undefined) ??
+  ''
+
+// Autenticação (Basic Auth) desse host é registrada via header em lib/dhnAuth.ts —
+// nunca embutir usuário/senha na URL (OkHttp/MapLibre Native não decodifica userinfo).
+export const DHN_TILE_URL = DHN_TILES_HOST ? `${DHN_TILES_HOST}/tiles/dhn-guanabara/{z}/{x}/{y}.png` : ''
+export const DHN_STYLE_URL = DHN_TILES_HOST ? `${DHN_TILES_HOST}/styles/dhn-guanabara.json` : ''
+export const SEAMARK_STYLE_URL = DHN_TILES_HOST ? `${DHN_TILES_HOST}/styles/seamark.json` : ''
+export const DHN_MAX_ZOOM = 16
+
 export interface CamadasConfig {
   seamarks: boolean
   bathymetry: boolean
+  dhnRnc: boolean
 }
