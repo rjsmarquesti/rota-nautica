@@ -14,11 +14,6 @@ on:
         options:
           - apk
           - aab
-      incluir_teste_dhn:
-        description: 'Incluir credenciais de teste da carta DHN (NUNCA usar com profile=aab)'
-        required: true
-        default: false
-        type: boolean
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -52,13 +47,6 @@ jobs:
 
       - name: Install Expo CLI
         run: npm install -g @expo/cli@latest
-
-      - name: Configurar credenciais de teste da carta DHN (opcional, uso pessoal)
-        if: ${{ github.event.inputs.incluir_teste_dhn == 'true' }}
-        run: |
-          echo "EXPO_PUBLIC_DHN_TILES_HOST=${{ secrets.DHN_TILES_HOST }}" >> .env.local
-          echo "EXPO_PUBLIC_DHN_TILES_USER=${{ secrets.DHN_TILES_USER }}" >> .env.local
-          echo "EXPO_PUBLIC_DHN_TILES_PASS=${{ secrets.DHN_TILES_PASS }}" >> .env.local
 
       - name: Generate native Android project
         run: npx expo prebuild --platform android --clean

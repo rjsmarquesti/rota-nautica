@@ -15,8 +15,9 @@ import {
 } from '../../lib/location'
 import {
   getWaypoints, getTrackAtivo, iniciarTrack, finalizarTrack, adicionarTrackPoints,
-  getMOBAtivo, resolverMOB, Waypoint, MobEvent, Track,
+  getMOBAtivo, resolverMOB, Waypoint, MobEvent, Track, getConfig, setConfig,
 } from '../../lib/db'
+import { temAcessoDHN } from '../../lib/tiles'
 
 const KEEP_AWAKE_TAG = 'rota-nautica-gravando'
 const FLUSH_INTERVAL_MS = 5000
@@ -29,6 +30,7 @@ export default function MapaScreen() {
   const [trackAtivo, setTrackAtivo] = useState<Track | null>(null)
   const [mobAtivo, setMobAtivo] = useState<MobEvent | null>(null)
   const [seguir, setSeguir] = useState(true)
+  const [avisoDhnVisivel, setAvisoDhnVisivel] = useState(temAcessoDHN() && getConfig('aviso_dhn_dispensado') !== '1')
 
   const bufferRef = useRef<Array<{ lat: number; lon: number; alt?: number | null; velocidade?: number | null; rumo?: number | null; precisao?: number | null; timestampGps: number }>>([])
   const ultimoPontoRef = useRef<{ lat: number; lon: number } | null>(null)
@@ -133,6 +135,23 @@ export default function MapaScreen() {
         </TouchableOpacity>
       </View>
 
+      {avisoDhnVisivel && (
+        <View style={[s.avisoDhnWrap, { top: insets.top + 64 }]}>
+          <Ionicons name="alert-circle" size={16} color={COLORS.danger} />
+          <Text style={s.avisoDhnTxt}>
+            Carta DHN cobre apenas a Baía de Guanabara/RJ — não use como referência fora dessa área.
+          </Text>
+          <TouchableOpacity
+            onPress={() => { setConfig('aviso_dhn_dispensado', '1'); setAvisoDhnVisivel(false) }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel="Dispensar aviso"
+          >
+            <Ionicons name="close" size={16} color={COLORS.textLight} />
+          </TouchableOpacity>
+        </View>
+      )}
+
       {mobAtivo && (
         <View style={[s.mobBannerWrap, { top: insets.top + 64 }]}>
           <MOBBanner
@@ -178,6 +197,13 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   mobBannerWrap: { position: 'absolute', left: 12, right: 12 },
+  avisoDhnWrap: {
+    position: 'absolute', left: 12, right: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: COLORS.dangerLight, borderWidth: 1, borderColor: COLORS.danger,
+    borderRadius: RADIUS.md, paddingHorizontal: 12, paddingVertical: 8,
+  },
+  avisoDhnTxt: { flex: 1, fontSize: FONTS.xs, color: COLORS.text, lineHeight: 15 },
   bottomOverlay: { position: 'absolute', left: 12 },
   gravarBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 8,

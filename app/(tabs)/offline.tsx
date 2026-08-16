@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { COLORS, FONTS, RADIUS } from '../../constants/theme'
 import MapCanvas, { MapCanvasHandle } from '../../components/MapCanvas'
-import { OFFLINE_ZOOM_DEFAULT, MAPTILER_KEY, DHN_TILE_URL } from '../../lib/tiles'
+import { OFFLINE_ZOOM_DEFAULT, MAPTILER_KEY, temAcessoDHN } from '../../lib/tiles'
 import { estimarTiles, estimarTamanhoBytes, baixarAreaOffline, removerAreaOffline, BBox } from '../../lib/offlineMaps'
 import {
   getAreasOffline, criarAreaOffline, deletarAreaOffline, getPackIds, getCamadasArea,
@@ -41,7 +41,7 @@ export default function OfflineScreen() {
   const [bboxSelecionado, setBboxSelecionado] = useState<BBox | null>(null)
   const [nome, setNome] = useState('')
   const [incluirSeamark, setIncluirSeamark] = useState(true)
-  const [incluirDhn, setIncluirDhn] = useState(!!DHN_TILE_URL)
+  const [incluirDhn, setIncluirDhn] = useState(temAcessoDHN())
 
   function recarregar() { setAreas(getAreasOffline()) }
   useFocusEffect(useCallback(() => { recarregar() }, []))
@@ -72,7 +72,7 @@ export default function OfflineScreen() {
     const camadas: CamadaOffline[] = [
       'base',
       ...(incluirSeamark ? (['seamark'] as CamadaOffline[]) : []),
-      ...(incluirDhn && DHN_TILE_URL ? (['dhnRnc'] as CamadaOffline[]) : []),
+      ...(incluirDhn && temAcessoDHN() ? (['dhnRnc'] as CamadaOffline[]) : []),
     ]
     const { min, max } = OFFLINE_ZOOM_DEFAULT
     const id = criarAreaOffline({
@@ -102,7 +102,7 @@ export default function OfflineScreen() {
     ])
   }
 
-  const camadasSelecionadas = 1 + (incluirSeamark ? 1 : 0) + (incluirDhn && DHN_TILE_URL ? 1 : 0)
+  const camadasSelecionadas = 1 + (incluirSeamark ? 1 : 0) + (incluirDhn && temAcessoDHN() ? 1 : 0)
   const estimativaTiles = bboxSelecionado
     ? estimarTiles(bboxSelecionado, OFFLINE_ZOOM_DEFAULT.min, OFFLINE_ZOOM_DEFAULT.max) * camadasSelecionadas
     : 0
@@ -177,7 +177,7 @@ export default function OfflineScreen() {
               <Ionicons name={incluirSeamark ? 'checkbox' : 'square-outline'} size={22} color={incluirSeamark ? COLORS.primary : COLORS.textLight} />
             </TouchableOpacity>
 
-            {DHN_TILE_URL && (
+            {temAcessoDHN() && (
               <TouchableOpacity
                 style={s.camadaRow}
                 onPress={() => setIncluirDhn(v => !v)}

@@ -1,5 +1,5 @@
 import { OfflineManager, type LngLatBounds } from '@maplibre/maplibre-react-native'
-import { MAPTILER_STYLE_URL, SEAMARK_STYLE_URL, DHN_STYLE_URL } from './tiles'
+import { MAPTILER_STYLE_URL, getSeamarkStyleUrl, getDhnStyleUrl } from './tiles'
 import { atualizarStatusAreaOffline, atualizarPackCamada, type CamadaOffline } from './db'
 
 export interface BBox {
@@ -37,10 +37,14 @@ export function estimarTamanhoBytes(bbox: BBox, zoomMin: number, zoomMax: number
 // StyleSpecification combinado). O cache de tiles do MapLibre é compartilhado por
 // URL, então isso também é o que permite o mapa ao vivo reaproveitar o que já foi
 // baixado offline.
-const STYLE_URL_POR_CAMADA: Record<CamadaOffline, string> = {
-  base: MAPTILER_STYLE_URL,
-  seamark: SEAMARK_STYLE_URL,
-  dhnRnc: DHN_STYLE_URL,
+// Lidas em cada chamada (não no import) — as URLs de seamark/DHN dependem do store
+// dinâmico de lib/tiles.ts, populado só depois do login (ver lib/dhnConfig.ts).
+function getStyleUrlPorCamada(): Record<CamadaOffline, string> {
+  return {
+    base: MAPTILER_STYLE_URL,
+    seamark: getSeamarkStyleUrl(),
+    dhnRnc: getDhnStyleUrl(),
+  }
 }
 
 // Baixa cada camada pedida como um OfflinePack separado. As camadas são iniciadas em
@@ -68,8 +72,9 @@ export async function baixarAreaOffline(
     onProgress?.(media)
   }
 
+  const styleUrlPorCamada = getStyleUrlPorCamada()
   for (const camada of camadas) {
-    const styleUrl = STYLE_URL_POR_CAMADA[camada]
+    const styleUrl = styleUrlPorCamada[camada]
     if (!styleUrl) {
       console.warn(`Camada "${camada}" sem style URL configurada — pulando.`)
       continue

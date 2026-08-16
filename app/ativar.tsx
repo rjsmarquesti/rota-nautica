@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { activateOnline } from '../lib/activation'
 import { setToken, setSecure } from '../lib/secure'
 import { setConfig, getConfig, initDB } from '../lib/db'
+import { buscarConfigDHN } from '../lib/dhnConfig'
 import { COLORS, FONTS, RADIUS } from '../constants/theme'
 
 const APP_VERSION = Constants.expoConfig?.version ?? '1.0'
@@ -86,6 +87,8 @@ export default function AtivarScreen() {
       setConfig('activationAttempts', '0')
       setConfig('activationLockedUntil', '0')
       setConfig('lastTokenVerified', String(Date.now()))
+      // Bypass do reviewer não depende de servidor (ver comentário acima) — pula o
+      // cadastro (que chama a API) e vai direto pro onboarding, mesmo padrão de sempre.
       router.replace('/onboarding')
       return
     }
@@ -113,6 +116,11 @@ export default function AtivarScreen() {
       setConfig('activationAttempts', '0')
       setConfig('activationLockedUntil', '0')
       setConfig('lastTokenVerified', String(Date.now()))
+      buscarConfigDHN(result.token!) // fire-and-forget — não bloqueia navegação
+      if (!getConfig('cadastro_done')) {
+        router.replace('/cadastro')
+        return
+      }
       const done = getConfig('onboarding_done')
       router.replace(done ? '/(tabs)/mapa' : '/onboarding')
     } catch {
