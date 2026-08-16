@@ -51,6 +51,10 @@ jobs:
       - name: Generate native Android project
         run: npx expo prebuild --platform android --clean
 
+      - name: Aumentar heap do Gradle (evita "Java heap space" no merge/package final)
+        run: |
+          echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m" >> android/gradle.properties
+
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
