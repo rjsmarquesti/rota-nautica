@@ -53,7 +53,9 @@ jobs:
 
       - name: Aumentar heap do Gradle (evita "Java heap space" no merge/package final)
         run: |
-          echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m" >> android/gradle.properties
+          printf '\norg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m\n' >> android/gradle.properties
+          echo "--- android/gradle.properties (final) ---"
+          cat android/gradle.properties
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
